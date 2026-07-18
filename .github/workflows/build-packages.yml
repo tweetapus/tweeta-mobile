@@ -91,7 +91,7 @@ jobs:
       - name: Upload the AppImage
         uses: actions/upload-artifact@v7
         with:
-          name: tweeta-mobile-appimage-aarch64
+          name: tweeta-mobile-aarch64.AppImage
           path: dist/tweeta-mobile-aarch64.AppImage
           if-no-files-found: error
           archive: false
@@ -127,7 +127,71 @@ jobs:
       - name: Upload the APK
         uses: actions/upload-artifact@v7
         with:
-          name: tweeta-mobile-android-release
+          name: tweeta-mobile-release.apk
           path: dist/tweeta-mobile-release.apk
           if-no-files-found: error
           archive: false
+
+  release:
+    name: Create GitHub Release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs:
+      - appimage
+      - android-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: master-release
+      cancel-in-progress: false
+    env:
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+      TZ: UTC
+
+    steps:
+      - name: Download the AppImage
+        uses: actions/download-artifact@v8
+        with:
+          name: tweeta-mobile-aarch64.AppImage
+          path: dist
+
+      - name: Download the APK
+        uses: actions/download-artifact@v8
+        with:
+          name: tweeta-mobile-release.apk
+          path: dist
+
+      - name: Determine the release version
+        id: version
+        run: |
+          release_date="$(date -u +%d%m%Y)"
+          next_index=0
+
+          while IFS= read -r tag; do
+            if [[ "$tag" =~ ^${release_date}\.([0-9]+)$ ]]; then
+              index=$((10#${BASH_REMATCH[1]}))
+              if (( index >= next_index )); then
+                next_index=$((index + 1))
+              fi
+            fi
+          done < <(gh release list --limit 1000 --json tagName --jq '.[].tagName')
+
+          version="${release_date}.${next_index}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Creating release $version"
+
+      - name: Create the GitHub Release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          test -s dist/tweeta-mobile-aarch64.AppImage
+          test -s dist/tweeta-mobile-release.apk
+
+          gh release create "$VERSION" \
+            dist/tweeta-mobile-aarch64.AppImage \
+            dist/tweeta-mobile-release.apk \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION" \
+            --generate-notes
