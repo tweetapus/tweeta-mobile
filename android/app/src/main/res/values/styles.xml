@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Tweeta" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/tweeta_blue</item>
+        <item name="colorSecondary">@color/tweeta_coral</item>
+        <item name="colorTertiary">@color/tweeta_teal</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="dynamicColorThemeOverlay">@style/ThemeOverlay.Material3.DynamicColors.DayNight</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Material3.MaterialAlertDialog</item>
+    </style>
+</resources>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!--
+      Resource shrinking drops the base adaptive icon when a v33 monochrome
+      variant exists. Keeping the API-26 qualifier preserves both variants in
+      the optimized APK; API 26 is also the application's minimum SDK.
+    -->
+    <issue id="ObsoleteSdkInt">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+    <issue id="MonochromeLauncherIcon">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+</lint>

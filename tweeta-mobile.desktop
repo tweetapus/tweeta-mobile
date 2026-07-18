@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Tweeta Mobile
+Exec=tweeta-mobile
+Icon=tweeta-mobile
+Type=Application
+Terminal=false
+Comment=A GTK3 client for Tweetapus, written in C.
+Categories=Network;Chat;InstantMessaging;
+Keywords=Tweetapus;Social;Mobile;

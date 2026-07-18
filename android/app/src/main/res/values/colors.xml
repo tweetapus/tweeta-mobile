@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="tweeta_blue">#1467D8</color>
+    <color name="tweeta_coral">#A43A55</color>
+    <color name="tweeta_teal">#006B60</color>
+    <color name="tweeta_logo_purple">#AC97FF</color>
+    <color name="tweeta_logo_background">#181825</color>
+</resources>

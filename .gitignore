@@ -1,0 +1,14 @@
+tweeta-mobile
+test_runner
+tweeta-mobile.info
+*.o
+.tweetapus/
+tweetapus/
+build/
+.cache/
+.codex
+.build-use-fido2-*
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties

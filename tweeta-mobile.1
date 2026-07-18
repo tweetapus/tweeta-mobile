@@ -1,0 +1,76 @@
+.TH TWEETA-MOBILE 1 "18 July 2026" "tweeta-mobile" "Tweeta Mobile Manual"
+.SH NAME
+tweeta-mobile \- GTK3 mobile client for Tweeta/Tweetapus
+.SH SYNOPSIS
+.B tweeta-mobile
+.RI [ GTK_OPTIONS ]
+.SH DESCRIPTION
+.B tweeta-mobile
+is a GTK3 mobile client for the Tweeta/Tweetapus social platform.
+.SH FEATURES
+.PP
+Current application features include:
+.PP
+.IP \(bu 2
+Public and following timelines with infinite scroll.
+.IP \(bu 2
+User authentication (login/logout) with persisted session restore.
+.IP \(bu 2
+Composing posts with optional media uploads.
+.IP \(bu 2
+Tweet interactions: reply, like, retweet/quote, bookmark, and emoji reactions.
+.IP \(bu 2
+Search for users and posts.
+.IP \(bu 2
+Profile views with tweets/replies/followers/following and follow/unfollow actions.
+.IP \(bu 2
+Notifications inbox with "mark all as read".
+.IP \(bu 2
+Direct messaging, including an encrypted messaging workspace (GPG key setup/import and contact management).
+.IP \(bu 2
+Communities browsing, join/leave, and community timelines.
+.IP \(bu 2
+Poll rendering and voting in timelines.
+.IP \(bu 2
+Admin views for stats, users, posts, and post notes/moderation actions.
+.IP \(bu 2
+Settings for theme, compact mode, notification toggles, and cache cleanup.
+.SH OPTIONS
+.B tweeta-mobile
+does not define custom command-line options.
+It accepts standard GTK+ 3 command-line options.
+.SH ENVIRONMENT
+.TP
+.B TWEETA_API_BASE_URL
+Overrides the default API base URL used for API requests.
+.TP
+.B TWEETA_BASE_DOMAIN
+Overrides the default site base domain used for absolute web/media URLs.
+.TP
+.B XDG_CONFIG_HOME
+Base directory used by GLib for per-user configuration.
+.TP
+.B XDG_CACHE_HOME
+Base directory used by GLib for per-user cache data.
+.SH FILES
+.TP
+.I $XDG_CONFIG_HOME/tweeta-mobile/session.json
+Stores session token, username, and admin flag after a successful login.
+.TP
+.I $XDG_CACHE_HOME/tweeta-mobile/
+Cache directory used by cache management in the Settings view.
+.TP
+.I /usr/local/share/pixmaps/tweeta-mobile.png
+Installed application icon (location varies by install prefix).
+.SH NOTES
+This target is designed for GNU/Linux phones, including PinePhone and Librem 5.
+.PP
+Encrypted messaging features depend on a working GPGME/GnuPG environment.
+The adaptive phone interface requires libhandy 1.4 or newer.
+.SH AUTHOR
+Lily
+.SH COPYRIGHT
+(c) 2025 Lily. Licensed under the GNU Affero General Public License v3.0 (AGPLv3).
+.SH SEE ALSO
+.BR gtk-options (7),
+.BR info (1)

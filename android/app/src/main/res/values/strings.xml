@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tweeta</string>
+    <string name="search_posts">Posts</string>
+    <string name="search_people">People</string>
+    <string name="message">Message</string>
+    <string name="account_handle">@%1$s</string>
+    <string name="media_attachment">Media attachment · %1$s</string>
+    <string name="account_badge_meta">%1$s · %2$s</string>
+    <plurals name="followers_count">
+        <item quantity="one">%d follower</item>
+        <item quantity="other">%d followers</item>
+    </plurals>
+</resources>
