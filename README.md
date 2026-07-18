@@ -1,19 +1,21 @@
 # Tweeta Mobile
 
-Two native mobile clients for Tweetapus:
+Native mobile clients for Tweetapus:
 
 - `src/`: the C/GTK3 application for GNU/Linux phones such as PinePhone and
   Librem 5. Its layout is handset-first and there is no desktop build target.
 - `android/`: the native Android application, written in Java with Android
   platform views and networking (no cross-platform UI framework).
+- `iOS/`: the native iPhone application, written in SwiftUI with iOS 26 Liquid
+  Glass and an iOS 17 material fallback.
 
-The clients cover the same Tweetapus feature areas: timelines, composing and
-post interactions, search, profiles, notifications, direct messages,
-bookmarks, lists, discovery, articles, communities, account tools, and admin
-tools where the signed-in account is authorized.
+The GNU/Linux and Android clients cover the same Tweetapus feature areas. The
+iPhone client currently supplies the core timeline, composing, search,
+notification, and profile experience while its server integration is brought
+to parity.
 
 The upstream Tweetapus server source in `tweetapus/` is reference-only and is
-never built into or modified by either app.
+never built into or modified by any app.
 
 ## GNU/Linux phones
 
@@ -57,6 +59,21 @@ gradle assembleDebug
 The Android app requires API 26 or newer and targets API 35. It accepts only
 HTTPS Tweetapus instances. Change the instance from **Menu → Settings → Change
 server instance**; changing it signs out the current session.
+
+## iPhone
+
+The iPhone client is an xtool-compatible Swift package. It requires Swift 6
+and a Darwin SDK built from Xcode. Once the SDK is installed, build it from the
+`iOS/` directory:
+
+```bash
+./xtool-x86_64.AppImage sdk install /path/to/Xcode.xip
+./xtool-x86_64.AppImage dev build
+```
+
+The app targets iOS 17 or newer. On iOS 26 it uses the native Liquid Glass APIs
+for controls, cards, and navigation; older releases receive an equivalent
+material treatment.
 
 ## Custom Tweetapus instance on GNU/Linux
 

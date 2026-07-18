@@ -1,0 +1,8 @@
+.build/
+.swiftpm/
+DerivedData/
+*.ipa
+*.xcodeproj
+xcuserdata/
+xtool/
+xtool*.AppImage
