@@ -31,6 +31,7 @@ jobs:
             curl \
             dpkg-dev \
             file \
+            imagemagick \
             libcurl4-openssl-dev \
             libgirepository1.0-dev \
             libgpgme-dev \
@@ -57,7 +58,13 @@ jobs:
           VERSION: "0.1"
         run: |
           tools_dir="$RUNNER_TEMP/linuxdeploy"
-          mkdir -p "$tools_dir" dist
+          icon_dir="$RUNNER_TEMP/tweeta-mobile-icon"
+          mkdir -p "$tools_dir" "$icon_dir" dist
+
+          convert "$PWD/logo.png" \
+            -resize 384x384 \
+            "$icon_dir/tweeta-mobile.png"
+          identify "$icon_dir/tweeta-mobile.png" | grep --quiet '384x384'
 
           curl --fail --location --retry 3 \
             --output "$tools_dir/linuxdeploy-aarch64.AppImage" \
@@ -76,7 +83,7 @@ jobs:
             --plugin gtk \
             --output appimage \
             --desktop-file "$PWD/tweeta-mobile.desktop" \
-            --icon-file "$PWD/logo.png"
+            --icon-file "$icon_dir/tweeta-mobile.png"
 
           test -s "$OUTPUT"
           chmod +x "$OUTPUT"
