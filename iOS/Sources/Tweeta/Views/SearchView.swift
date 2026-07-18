@@ -203,7 +203,7 @@ private struct PersonRow: View {
         withAnimation(.snappy) { isFollowing.toggle() }
       }
       .font(.caption.bold())
-      .foregroundStyle(isFollowing ? .primary : .white)
+      .foregroundStyle(isFollowing ? Color.primary : Color.white)
       .padding(.horizontal, 13)
       .padding(.vertical, 9)
       .background(isFollowing ? Color.clear : TweetaColors.violet, in: Capsule())

@@ -6,8 +6,8 @@ import SwiftUI
 final class AppStore {
   var selectedTab: AppTab = .home
   var timeline: Timeline = .forYou
-  var posts: [Post] = Self.previewPosts
-  var notifications: [TweetaNotification] = Self.previewNotifications
+  var posts: [Post] = AppStore.previewPosts
+  var notifications: [TweetaNotification] = AppStore.previewNotifications
   var isDarkMode = true
 
   var colorScheme: ColorScheme { isDarkMode ? .dark : .light }
