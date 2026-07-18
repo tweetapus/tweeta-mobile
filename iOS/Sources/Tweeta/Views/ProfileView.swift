@@ -185,7 +185,21 @@ private struct SettingsView: View {
           Label("Privacy and safety", systemImage: "hand.raised")
           Label("Notifications", systemImage: "bell")
           Label("Bookmarks", systemImage: "bookmark")
-          Label("Server instance", systemImage: "network")
+          NavigationLink {
+            InstanceSettingsView()
+          } label: {
+            Label {
+              HStack {
+                Text("Server instance")
+                Spacer()
+                Text(store.selectedInstance.host)
+                  .foregroundStyle(.secondary)
+                  .lineLimit(1)
+              }
+            } icon: {
+              Image(systemName: "network")
+            }
+          }
         }
 
         Section {
@@ -201,6 +215,155 @@ private struct SettingsView: View {
           Button("Done") { dismiss() }
         }
       }
+    }
+  }
+}
+
+private struct InstanceSettingsView: View {
+  @Environment(AppStore.self) private var store
+  @State private var isAddingInstance = false
+  @State private var removalError: String?
+
+  var body: some View {
+    List {
+      Section {
+        ForEach(store.instances) { instance in
+          Button {
+            withAnimation(.snappy) {
+              store.selectInstance(instance.id)
+            }
+          } label: {
+            HStack(spacing: 12) {
+              Image(systemName: "server.rack")
+                .foregroundStyle(
+                  instance.id == store.selectedInstanceID ? TweetaColors.lavender : .secondary)
+                .frame(width: 24)
+
+              VStack(alignment: .leading, spacing: 3) {
+                Text(instance.host)
+                  .foregroundStyle(.primary)
+                Text(instance.address)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+                  .lineLimit(1)
+              }
+
+              Spacer()
+
+              if instance.id == store.selectedInstanceID {
+                Image(systemName: "checkmark.circle.fill")
+                  .foregroundStyle(TweetaColors.lavender)
+                  .accessibilityLabel("Selected")
+              }
+            }
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+        }
+        .onDelete(perform: removeInstances)
+        .deleteDisabled(store.instances.count == 1)
+      } header: {
+        Text("Instances")
+      } footer: {
+        Text("Tap an instance to switch. Only HTTPS servers can be added.")
+      }
+    }
+    .scrollContentBackground(.hidden)
+    .navigationTitle("Server instances")
+    .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      ToolbarItemGroup(placement: .topBarTrailing) {
+        EditButton()
+        Button {
+          isAddingInstance = true
+        } label: {
+          Image(systemName: "plus")
+        }
+        .accessibilityLabel("Add instance")
+      }
+    }
+    .sheet(isPresented: $isAddingInstance) {
+      AddInstanceView()
+        .environment(store)
+        .presentationDetents([.medium])
+        .presentationBackground(.ultraThinMaterial)
+    }
+    .alert("Couldn’t remove instance", isPresented: removalAlertIsPresented) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text(removalError ?? "Please try again.")
+    }
+  }
+
+  private var removalAlertIsPresented: Binding<Bool> {
+    Binding(
+      get: { removalError != nil },
+      set: { if !$0 { removalError = nil } }
+    )
+  }
+
+  private func removeInstances(at offsets: IndexSet) {
+    for offset in offsets.sorted(by: >) {
+      do {
+        try store.removeInstance(store.instances[offset].id)
+      } catch {
+        removalError = error.localizedDescription
+      }
+    }
+  }
+}
+
+private struct AddInstanceView: View {
+  @Environment(AppStore.self) private var store
+  @Environment(\.dismiss) private var dismiss
+  @State private var address = ""
+  @State private var errorMessage: String?
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        Section {
+          TextField("example.org", text: $address)
+            .textContentType(.URL)
+            .keyboardType(.URL)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .submitLabel(.done)
+            .onSubmit(addInstance)
+        } header: {
+          Text("Server address")
+        } footer: {
+          Text("HTTPS is added automatically when no scheme is provided.")
+        }
+
+        if let errorMessage {
+          Section {
+            Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+              .foregroundStyle(.red)
+          }
+        }
+      }
+      .scrollContentBackground(.hidden)
+      .navigationTitle("Add instance")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Cancel") { dismiss() }
+        }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Add", action: addInstance)
+            .disabled(address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+      }
+    }
+  }
+
+  private func addInstance() {
+    do {
+      try store.addInstance(address)
+      dismiss()
+    } catch {
+      errorMessage = error.localizedDescription
     }
   }
 }
