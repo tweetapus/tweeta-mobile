@@ -132,12 +132,55 @@ jobs:
           if-no-files-found: error
           archive: false
 
+  ios-ipa:
+    name: iOS IPA (unsigned)
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v6
+
+      - name: Verify the Apple toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+          swift --version
+
+      - name: Install xtool
+        run: |
+          brew install xtool-org/tap/xtool
+          xtool --version
+
+      - name: Build the release IPA
+        working-directory: iOS
+        run: xtool dev build --configuration release --ipa
+
+      - name: Collect the IPA
+        run: |
+          ipa_path="$(find iOS -type f -name '*.ipa' -print -quit)"
+          test -n "$ipa_path"
+          test -s "$ipa_path"
+
+          mkdir -p dist
+          cp "$ipa_path" dist/tweeta-mobile-unsigned.ipa
+          unzip -t dist/tweeta-mobile-unsigned.ipa
+
+      - name: Upload the IPA
+        uses: actions/upload-artifact@v7
+        with:
+          name: tweeta-mobile-unsigned.ipa
+          path: dist/tweeta-mobile-unsigned.ipa
+          if-no-files-found: error
+          archive: false
+
   release:
     name: Create GitHub Release
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs:
       - appimage
       - android-apk
+      - ios-ipa
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -161,6 +204,12 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: tweeta-mobile-release.apk
+          path: dist
+
+      - name: Download the IPA
+        uses: actions/download-artifact@v8
+        with:
+          name: tweeta-mobile-unsigned.ipa
           path: dist
 
       - name: Determine the release version
@@ -188,10 +237,12 @@ jobs:
         run: |
           test -s dist/tweeta-mobile-aarch64.AppImage
           test -s dist/tweeta-mobile-release.apk
+          test -s dist/tweeta-mobile-unsigned.ipa
 
           gh release create "$VERSION" \
             dist/tweeta-mobile-aarch64.AppImage \
             dist/tweeta-mobile-release.apk \
+            dist/tweeta-mobile-unsigned.ipa \
             --target "$GITHUB_SHA" \
             --title "$VERSION" \
             --generate-notes
