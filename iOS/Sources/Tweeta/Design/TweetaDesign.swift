@@ -115,6 +115,7 @@ struct GlassGroup<Content: View>: View {
 struct AvatarView: View {
   let initials: String
   var size: CGFloat = 44
+  var imageURL: URL? = nil
 
   private var colors: [Color] {
     let index = initials.unicodeScalars.reduce(0) { $0 + Int($1.value) } % 4
@@ -133,8 +134,17 @@ struct AvatarView: View {
       Text(initials)
         .font(.system(size: size * 0.31, weight: .bold, design: .rounded))
         .foregroundStyle(.white)
+
+      if let imageURL {
+        AsyncImage(url: imageURL) { phase in
+          if case .success(let image) = phase {
+            image.resizable().scaledToFill()
+          }
+        }
+      }
     }
     .frame(width: size, height: size)
+    .clipShape(Circle())
     .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 1))
     .accessibilityHidden(true)
   }

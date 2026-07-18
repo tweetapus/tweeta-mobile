@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
   @Environment(AppStore.self) private var store
   @State private var isComposing = false
+  @State private var isShowingSignIn = false
 
   var body: some View {
     ZStack {
@@ -23,7 +24,7 @@ struct RootView: View {
       .transition(.opacity.combined(with: .scale(scale: 0.99)))
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
-      GlassTabBar(isComposing: $isComposing)
+      GlassTabBar(isComposing: $isComposing, isShowingSignIn: $isShowingSignIn)
         .padding(.horizontal, 18)
         .padding(.bottom, 7)
     }
@@ -34,12 +35,32 @@ struct RootView: View {
         .presentationDragIndicator(.hidden)
         .presentationBackground(.clear)
     }
+    .sheet(isPresented: $isShowingSignIn) {
+      SignInView()
+        .environment(store)
+        .presentationDetents([.medium, .large])
+        .presentationBackground(.ultraThinMaterial)
+    }
+    .alert("Tweeta", isPresented: presentedErrorIsVisible) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text(store.presentedError ?? "Something went wrong.")
+    }
+    .task { await store.bootstrap() }
+  }
+
+  private var presentedErrorIsVisible: Binding<Bool> {
+    Binding(
+      get: { store.presentedError != nil },
+      set: { if !$0 { store.presentedError = nil } }
+    )
   }
 }
 
 private struct GlassTabBar: View {
   @Environment(AppStore.self) private var store
   @Binding var isComposing: Bool
+  @Binding var isShowingSignIn: Bool
   @Namespace private var selectionNamespace
 
   private let tabs: [(AppTab, String, String)] = [
@@ -56,7 +77,11 @@ private struct GlassTabBar: View {
         tabButton(tabs[1])
 
         Button {
-          isComposing = true
+          if store.isSignedIn {
+            isComposing = true
+          } else {
+            isShowingSignIn = true
+          }
         } label: {
           Image(systemName: "plus")
             .font(.system(size: 19, weight: .bold))

@@ -5,30 +5,22 @@ struct ComposeView: View {
   @Environment(\.dismiss) private var dismiss
   @FocusState private var isFocused: Bool
   @State private var text = ""
-  @State private var audience = Audience.everyone
   @State private var isShowingPoll = false
   @State private var firstOption = ""
   @State private var secondOption = ""
-  @State private var hasMedia = false
-
-  private enum Audience: String, CaseIterable, Identifiable {
-    case everyone = "Everyone"
-    case followers = "Followers"
-    case mentioned = "Mentioned people"
-
-    var id: Self { self }
-    var symbol: String {
-      switch self {
-      case .everyone: "globe.americas.fill"
-      case .followers: "person.2.fill"
-      case .mentioned: "at"
-      }
-    }
-  }
+  @State private var isPosting = false
+  @State private var errorMessage: String?
 
   private let limit = 500
   private var trimmedText: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
-  private var canPost: Bool { !trimmedText.isEmpty && text.count <= limit }
+  private var pollIsValid: Bool {
+    !isShowingPoll
+      || (!firstOption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        && !secondOption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+  }
+  private var canPost: Bool {
+    !trimmedText.isEmpty && text.count <= limit && pollIsValid && !isPosting
+  }
 
   var body: some View {
     ZStack {
@@ -40,7 +32,9 @@ struct ComposeView: View {
         ScrollView {
           VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
-              AvatarView(initials: "L", size: 46)
+              AvatarView(
+                initials: store.profile?.initials ?? "?", size: 46,
+                imageURL: store.profile?.avatarURL)
 
               ZStack(alignment: .topLeading) {
                 if text.isEmpty {
@@ -65,37 +59,25 @@ struct ComposeView: View {
               }
             }
 
-            if hasMedia {
-              mediaPreview
-                .transition(.scale.combined(with: .opacity))
-            }
-
             if isShowingPoll {
               pollEditor
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
 
             HStack {
-              Menu {
-                ForEach(Audience.allCases) { item in
-                  Button {
-                    audience = item
-                  } label: {
-                    Label(item.rawValue, systemImage: item.symbol)
-                  }
-                }
-              } label: {
-                Label(audience.rawValue, systemImage: audience.symbol)
-                  .font(.subheadline.bold())
-                  .foregroundStyle(TweetaColors.lavender)
-                  .padding(.horizontal, 12)
-                  .padding(.vertical, 8)
-                  .tweetaGlass(in: Capsule(), interactive: true)
-              }
+              Label("Public post", systemImage: "globe.americas.fill")
+                .font(.subheadline.bold())
+                .foregroundStyle(TweetaColors.lavender)
               Spacer()
               Text("\(max(0, limit - text.count))")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(text.count > limit ? .red : .secondary)
+            }
+
+            if let errorMessage {
+              Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(.red)
             }
           }
           .padding(18)
@@ -119,8 +101,7 @@ struct ComposeView: View {
         .font(.headline)
       Spacer()
       Button("Post") {
-        store.publish(trimmedText)
-        dismiss()
+        post()
       }
       .font(.subheadline.bold())
       .foregroundStyle(.white)
@@ -144,17 +125,10 @@ struct ComposeView: View {
   private var composeTools: some View {
     GlassGroup {
       HStack(spacing: 5) {
-        toolButton(symbol: "photo", label: "Add photo") {
-          withAnimation(.snappy) { hasMedia.toggle() }
-        }
-        toolButton(symbol: "camera", label: "Open camera") {
-          withAnimation(.snappy) { hasMedia = true }
-        }
         toolButton(symbol: "chart.bar.xaxis", label: "Add poll") {
           withAnimation(.snappy) { isShowingPoll.toggle() }
         }
         toolButton(symbol: "face.smiling", label: "Add emoji") { text += " ✨" }
-        toolButton(symbol: "calendar.badge.clock", label: "Schedule") {}
       }
       .padding(7)
       .tweetaGlass(in: Capsule(), interactive: true)
@@ -175,34 +149,6 @@ struct ComposeView: View {
     }
     .buttonStyle(.plain)
     .accessibilityLabel(label)
-  }
-
-  private var mediaPreview: some View {
-    ZStack(alignment: .topTrailing) {
-      LinearGradient(
-        colors: [.indigo, TweetaColors.violet, .cyan], startPoint: .topLeading,
-        endPoint: .bottomTrailing
-      )
-      .frame(height: 180)
-      .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-      .overlay {
-        BirdMark()
-          .fill(.white.opacity(0.28))
-          .frame(width: 105, height: 105)
-      }
-
-      Button {
-        withAnimation(.snappy) { hasMedia = false }
-      } label: {
-        Image(systemName: "xmark")
-          .font(.caption.bold())
-          .foregroundStyle(.white)
-          .frame(width: 30, height: 30)
-          .background(.black.opacity(0.42), in: Circle())
-      }
-      .padding(10)
-      .accessibilityLabel("Remove photo")
-    }
   }
 
   private var pollEditor: some View {
@@ -227,5 +173,23 @@ struct ComposeView: View {
     }
     .padding(14)
     .tweetaGlass(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+  }
+
+  private func post() {
+    guard canPost else { return }
+    isPosting = true
+    errorMessage = nil
+    let options = isShowingPoll
+      ? [firstOption, secondOption].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      : []
+    Task {
+      do {
+        try await store.publish(trimmedText, pollOptions: options)
+        dismiss()
+      } catch {
+        errorMessage = error.localizedDescription
+        isPosting = false
+      }
+    }
   }
 }

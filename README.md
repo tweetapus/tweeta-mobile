@@ -75,6 +75,11 @@ The app targets iOS 17 or newer. On iOS 26 it uses the native Liquid Glass APIs
 for controls, cards, and navigation; older releases receive an equivalent
 material treatment.
 
+The iPhone client connects to the live Tweetapus API. It defaults to
+`https://tweeta.tiago.zip`; add, remove, or switch HTTPS instances from
+**Profile → Settings → Server instance**. Sign-in tokens are stored in the iOS
+Keychain and kept separate for each instance.
+
 ## Custom Tweetapus instance on GNU/Linux
 
 ```bash

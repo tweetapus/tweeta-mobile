@@ -3,6 +3,7 @@ import SwiftUI
 struct NotificationsView: View {
   @Environment(AppStore.self) private var store
   @State private var filter = NotificationFilter.all
+  @State private var isShowingSignIn = false
 
   private enum NotificationFilter: String, CaseIterable, Identifiable {
     case all = "All"
@@ -12,22 +13,51 @@ struct NotificationsView: View {
 
   private var visibleNotifications: [TweetaNotification] {
     if filter == .all { return store.notifications }
-    return store.notifications.filter { $0.kind == .replied }
+    return store.notifications.filter { $0.kind == .replied || $0.kind == .mentioned }
   }
 
   var body: some View {
     ScrollView {
       LazyVStack(spacing: 12) {
-        filterPicker
+        if !store.isSignedIn {
+          ContentUnavailableView {
+            Label("Sign in for notifications", systemImage: "bell")
+          } description: {
+            Text("Notifications are private to your account.")
+          } actions: {
+            Button("Sign in") { isShowingSignIn = true }
+              .buttonStyle(.borderedProminent)
+          }
+          .padding(.top, 70)
+        } else {
+          filterPicker
 
-        ForEach(visibleNotifications) { notification in
-          NotificationRow(notification: notification)
+          if store.isLoadingNotifications && store.notifications.isEmpty {
+            ProgressView("Loading notifications…")
+              .frame(maxWidth: .infinity)
+              .padding(.top, 60)
+          } else if let error = store.notificationError, store.notifications.isEmpty {
+            ContentUnavailableView(
+              "Notifications unavailable", systemImage: "wifi.exclamationmark",
+              description: Text(error))
+            .padding(.top, 50)
+          } else if visibleNotifications.isEmpty {
+            ContentUnavailableView(
+              "No notifications", systemImage: "bell.slash",
+              description: Text("New activity will appear here."))
+            .padding(.top, 50)
+          } else {
+            ForEach(visibleNotifications) { notification in
+              NotificationRow(notification: notification)
+            }
+          }
         }
       }
       .padding(.horizontal, 16)
       .padding(.bottom, 18)
     }
     .scrollIndicators(.hidden)
+    .refreshable { await store.loadNotifications() }
     .navigationTitle("Notifications")
     .navigationBarTitleDisplayMode(.large)
     .toolbarBackground(.hidden, for: .navigationBar)
@@ -35,10 +65,20 @@ struct NotificationsView: View {
       ToolbarItem(placement: .topBarTrailing) {
         if store.unreadCount > 0 {
           Button("Mark read") {
-            withAnimation(.easeInOut) { store.markNotificationsRead() }
+            Task { await store.markNotificationsRead() }
           }
           .font(.subheadline.weight(.semibold))
         }
+      }
+    }
+    .sheet(isPresented: $isShowingSignIn) {
+      SignInView().environment(store)
+        .presentationDetents([.medium, .large])
+        .presentationBackground(.ultraThinMaterial)
+    }
+    .task {
+      if store.isSignedIn && store.notifications.isEmpty {
+        await store.loadNotifications()
       }
     }
   }
@@ -54,9 +94,7 @@ struct NotificationsView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
             .background {
-              if filter == item {
-                Capsule().fill(TweetaColors.lavender.opacity(0.2))
-              }
+              if filter == item { Capsule().fill(TweetaColors.lavender.opacity(0.2)) }
             }
         }
         .buttonStyle(.plain)
@@ -77,13 +115,16 @@ private struct NotificationRow: View {
     case .boosted: .mint
     case .followed: TweetaColors.lavender
     case .replied: .blue
+    case .mentioned: .orange
+    case .other: .secondary
     }
   }
 
   var body: some View {
     HStack(alignment: .top, spacing: 12) {
       ZStack(alignment: .bottomTrailing) {
-        AvatarView(initials: notification.avatar, size: 46)
+        AvatarView(
+          initials: notification.avatar, size: 46, imageURL: notification.avatarURL)
         Circle()
           .fill(tint)
           .frame(width: 23, height: 23)
@@ -105,10 +146,12 @@ private struct NotificationRow: View {
             .font(.caption2)
             .foregroundStyle(.tertiary)
         }
-        Text(notification.detail)
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
+        if !notification.detail.isEmpty {
+          Text(notification.detail)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+        }
       }
 
       if notification.isUnread {

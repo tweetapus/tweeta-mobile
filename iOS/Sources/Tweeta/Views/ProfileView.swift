@@ -4,6 +4,7 @@ struct ProfileView: View {
   @Environment(AppStore.self) private var store
   @State private var selectedSection = ProfileSection.posts
   @State private var isShowingSettings = false
+  @State private var isShowingSignIn = false
 
   private enum ProfileSection: String, CaseIterable, Identifiable {
     case posts = "Posts"
@@ -15,27 +16,39 @@ struct ProfileView: View {
   var body: some View {
     ScrollView {
       LazyVStack(spacing: 14) {
-        profileHeader
-        stats
-        profilePicker
-
-        if selectedSection == .posts {
-          ForEach(store.posts.prefix(2)) { post in
-            PostCard(post: post)
+        if !store.isSignedIn {
+          ContentUnavailableView {
+            Label("Sign in to your profile", systemImage: "person.crop.circle")
+          } description: {
+            Text("Your profile is private to your account on \(store.selectedInstance.host).")
+          } actions: {
+            Button("Sign in") { isShowingSignIn = true }
+              .buttonStyle(.borderedProminent)
           }
-        } else {
+          .padding(.top, 80)
+        } else if store.isLoadingProfile && store.profile == nil {
+          ProgressView("Loading profile…")
+            .frame(maxWidth: .infinity)
+            .padding(.top, 80)
+        } else if let error = store.profileError, store.profile == nil {
           ContentUnavailableView(
-            selectedSection == .replies ? "No replies yet" : "No media yet",
-            systemImage: selectedSection == .replies ? "bubble.left" : "photo.on.rectangle",
-            description: Text("What you share will appear here.")
-          )
-          .padding(.vertical, 44)
+            "Profile unavailable", systemImage: "wifi.exclamationmark", description: Text(error))
+          .padding(.top, 60)
+        } else if store.profile != nil {
+          profileHeader
+          stats
+          profilePicker
+          selectedContent
+        } else {
+          ContentUnavailableView("Profile unavailable", systemImage: "person.crop.circle.badge.xmark")
+            .padding(.top, 60)
         }
       }
       .padding(.horizontal, 16)
       .padding(.bottom, 18)
     }
     .scrollIndicators(.hidden)
+    .refreshable { await store.loadProfile() }
     .navigationTitle("Profile")
     .navigationBarTitleDisplayMode(.inline)
     .toolbarBackground(.hidden, for: .navigationBar)
@@ -58,10 +71,45 @@ struct ProfileView: View {
         .environment(store)
         .presentationBackground(.ultraThinMaterial)
     }
+    .sheet(isPresented: $isShowingSignIn) {
+      SignInView().environment(store)
+        .presentationDetents([.medium, .large])
+        .presentationBackground(.ultraThinMaterial)
+    }
+    .task {
+      if store.isSignedIn && store.profile == nil { await store.loadProfile() }
+    }
+  }
+
+  @ViewBuilder
+  private var selectedContent: some View {
+    let selectedPosts: [Post] = {
+      switch selectedSection {
+      case .posts: store.profilePosts
+      case .replies: store.profileReplies
+      case .media: store.profilePosts.filter { !$0.attachments.isEmpty }
+      }
+    }()
+    if selectedSection == .replies && store.isLoadingProfileReplies && selectedPosts.isEmpty {
+      ProgressView("Loading replies…")
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 55)
+    } else if selectedPosts.isEmpty {
+      ContentUnavailableView(
+        selectedSection == .replies ? "No replies yet"
+          : selectedSection == .media ? "No media yet" : "No posts yet",
+        systemImage: selectedSection == .replies ? "bubble.left"
+          : selectedSection == .media ? "photo.on.rectangle" : "text.bubble",
+        description: Text("Activity from this account will appear here."))
+      .padding(.vertical, 44)
+    } else {
+      ForEach(selectedPosts) { post in PostCard(post: post) }
+    }
   }
 
   private var profileHeader: some View {
-    VStack(spacing: 0) {
+    let profile = store.profile!
+    return VStack(spacing: 0) {
       ZStack(alignment: .bottomLeading) {
         LinearGradient(
           colors: [TweetaColors.violet.opacity(0.9), .indigo, .cyan.opacity(0.72)],
@@ -76,7 +124,15 @@ struct ProfileView: View {
             .offset(x: 130, y: -40)
         }
 
-        AvatarView(initials: "L", size: 82)
+        if let bannerURL = profile.bannerURL {
+          AsyncImage(url: bannerURL) { phase in
+            if case .success(let image) = phase { image.resizable().scaledToFill() }
+          }
+          .frame(height: 132)
+          .clipped()
+        }
+
+        AvatarView(initials: profile.initials, size: 82, imageURL: profile.avatarURL)
           .overlay(Circle().stroke(.background, lineWidth: 4))
           .offset(x: 16, y: 41)
       }
@@ -84,28 +140,37 @@ struct ProfileView: View {
       VStack(alignment: .leading, spacing: 5) {
         HStack(alignment: .top) {
           VStack(alignment: .leading, spacing: 2) {
-            Text("Lily")
+            HStack(spacing: 5) {
+              Text(profile.name)
+              if profile.verified {
+                Image(systemName: "checkmark.seal.fill")
+                  .foregroundStyle(TweetaColors.lavender)
+              }
+            }
               .font(.title2.bold())
-            Text("@lily")
+            Text("@\(profile.username)")
               .font(.subheadline)
               .foregroundStyle(.secondary)
           }
           Spacer()
-          Button("Edit profile") {}
-            .font(.subheadline.bold())
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .tweetaGlass(in: Capsule(), interactive: true)
         }
 
-        Text("Building thoughtful software and collecting small wonders along the way.")
-          .font(.subheadline)
-          .lineSpacing(2)
-          .padding(.top, 5)
+        if !profile.bio.isEmpty {
+          Text(profile.bio)
+            .font(.subheadline)
+            .lineSpacing(2)
+            .padding(.top, 5)
+        }
 
         HStack(spacing: 12) {
-          Label("Melbourne", systemImage: "mappin.and.ellipse")
-          Label("Joined 2026", systemImage: "calendar")
+          if !profile.location.isEmpty {
+            Label(profile.location, systemImage: "mappin.and.ellipse")
+          }
+          if let joinedAt = profile.joinedAt {
+            Label(
+              "Joined \(joinedAt.formatted(.dateTime.month(.abbreviated).year()))",
+              systemImage: "calendar")
+          }
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -120,12 +185,13 @@ struct ProfileView: View {
   }
 
   private var stats: some View {
-    HStack {
-      stat(value: "248", label: "Following")
+    let profile = store.profile!
+    return HStack {
+      stat(value: profile.followingCount.formatted(.number.notation(.compactName)), label: "Following")
       Divider().frame(height: 28)
-      stat(value: "1.8K", label: "Followers")
+      stat(value: profile.followerCount.formatted(.number.notation(.compactName)), label: "Followers")
       Divider().frame(height: 28)
-      stat(value: "612", label: "Posts")
+      stat(value: profile.postCount.formatted(.number.notation(.compactName)), label: "Posts")
     }
     .padding(.vertical, 13)
     .tweetaGlass(in: RoundedRectangle(cornerRadius: 21, style: .continuous))
@@ -144,6 +210,9 @@ struct ProfileView: View {
       ForEach(ProfileSection.allCases) { section in
         Button {
           withAnimation(.snappy) { selectedSection = section }
+          if section == .replies && store.profileReplies.isEmpty {
+            Task { await store.loadProfileReplies() }
+          }
         } label: {
           Text(section.rawValue)
             .font(.subheadline.weight(.semibold))
@@ -167,6 +236,7 @@ struct ProfileView: View {
 private struct SettingsView: View {
   @Environment(AppStore.self) private var store
   @Environment(\.dismiss) private var dismiss
+  @State private var isShowingSignIn = false
 
   var body: some View {
     @Bindable var store = store
@@ -182,9 +252,32 @@ private struct SettingsView: View {
         }
 
         Section("Account") {
-          Label("Privacy and safety", systemImage: "hand.raised")
-          Label("Notifications", systemImage: "bell")
-          Label("Bookmarks", systemImage: "bookmark")
+          if let session = store.session {
+            Label {
+              VStack(alignment: .leading, spacing: 2) {
+                Text(session.name)
+                Text("@\(session.username)")
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
+            } icon: {
+              Image(systemName: "person.crop.circle.fill")
+            }
+            Button(role: .destructive) {
+              store.signOut()
+            } label: {
+              Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+            }
+          } else {
+            Button {
+              isShowingSignIn = true
+            } label: {
+              Label("Sign in", systemImage: "person.crop.circle.badge.checkmark")
+            }
+          }
+        }
+
+        Section("Connection") {
           NavigationLink {
             InstanceSettingsView()
           } label: {
@@ -201,11 +294,6 @@ private struct SettingsView: View {
             }
           }
         }
-
-        Section {
-          Label("About Tweeta", systemImage: "info.circle")
-          Label("Help", systemImage: "questionmark.circle")
-        }
       }
       .scrollContentBackground(.hidden)
       .navigationTitle("Settings")
@@ -214,6 +302,11 @@ private struct SettingsView: View {
         ToolbarItem(placement: .confirmationAction) {
           Button("Done") { dismiss() }
         }
+      }
+      .sheet(isPresented: $isShowingSignIn) {
+        SignInView().environment(store)
+          .presentationDetents([.medium, .large])
+          .presentationBackground(.ultraThinMaterial)
       }
     }
   }
@@ -265,7 +358,8 @@ private struct InstanceSettingsView: View {
       } header: {
         Text("Instances")
       } footer: {
-        Text("Tap an instance to switch. Only HTTPS servers can be added.")
+        Text(
+          "Tap an instance to switch. Accounts are stored separately for each HTTPS server.")
       }
     }
     .scrollContentBackground(.hidden)

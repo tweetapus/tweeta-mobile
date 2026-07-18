@@ -2,26 +2,32 @@ import SwiftUI
 
 struct HomeView: View {
   @Environment(AppStore.self) private var store
-
-  private var visiblePosts: [Post] {
-    switch store.timeline {
-    case .publicFeed: store.posts
-    case .following: Array(store.posts.prefix(2))
-    case .forYou: store.posts
-    }
-  }
+  @State private var isShowingSignIn = false
 
   var body: some View {
     ScrollView {
       LazyVStack(spacing: 14) {
         timelinePicker
 
-        if store.timeline == .forYou {
-          conversationStarter
-        }
-
-        ForEach(visiblePosts) { post in
-          PostCard(post: post)
+        if store.isLoadingTimeline && store.posts.isEmpty {
+          ProgressView("Loading \(store.timeline.rawValue.lowercased()) timeline…")
+            .frame(maxWidth: .infinity)
+            .padding(.top, 70)
+        } else if let error = store.timelineError, store.posts.isEmpty {
+          ContentUnavailableView(
+            "Timeline unavailable", systemImage: "wifi.exclamationmark",
+            description: Text(error)
+          )
+          .padding(.top, 45)
+        } else if store.posts.isEmpty {
+          ContentUnavailableView(
+            "No posts yet", systemImage: "text.bubble",
+            description: Text("Pull to refresh or try another timeline."))
+          .padding(.top, 45)
+        } else {
+          ForEach(store.posts) { post in
+            PostCard(post: post)
+          }
         }
       }
       .padding(.horizontal, 16)
@@ -30,7 +36,7 @@ struct HomeView: View {
     }
     .scrollIndicators(.hidden)
     .refreshable {
-      try? await Task.sleep(for: .milliseconds(650))
+      await store.loadTimeline()
     }
     .navigationTitle("Tweeta")
     .navigationBarTitleDisplayMode(.inline)
@@ -61,6 +67,11 @@ struct HomeView: View {
         .accessibilityLabel(store.isDarkMode ? "Use light appearance" : "Use dark appearance")
       }
     }
+    .sheet(isPresented: $isShowingSignIn) {
+      SignInView().environment(store)
+        .presentationDetents([.medium, .large])
+        .presentationBackground(.ultraThinMaterial)
+    }
   }
 
   private var timelinePicker: some View {
@@ -68,7 +79,11 @@ struct HomeView: View {
       HStack(spacing: 4) {
         ForEach(Timeline.allCases) { timeline in
           Button {
-            withAnimation(.snappy) { store.timeline = timeline }
+            if timeline == .publicFeed || store.isSignedIn {
+              Task { await store.loadTimeline(timeline) }
+            } else {
+              isShowingSignIn = true
+            }
           } label: {
             Text(timeline.rawValue)
               .font(.subheadline.weight(.semibold))
@@ -90,43 +105,18 @@ struct HomeView: View {
     .padding(.bottom, 2)
   }
 
-  private var conversationStarter: some View {
-    HStack(spacing: 12) {
-      ZStack {
-        Circle()
-          .fill(TweetaColors.lavender.opacity(0.15))
-          .frame(width: 42, height: 42)
-        Image(systemName: "sparkles")
-          .foregroundStyle(TweetaColors.lavender)
-      }
-
-      VStack(alignment: .leading, spacing: 2) {
-        Text("A gentler timeline")
-          .font(.subheadline.bold())
-        Text("Thoughtful posts picked for you")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-
-      Spacer()
-      Image(systemName: "chevron.right")
-        .font(.caption.bold())
-        .foregroundStyle(.tertiary)
-    }
-    .padding(14)
-    .tweetaGlass(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-  }
 }
 
 struct PostCard: View {
   @Environment(AppStore.self) private var store
   let post: Post
   @State private var isShowingReply = false
+  @State private var isShowingSignIn = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       HStack(alignment: .top, spacing: 11) {
-        AvatarView(initials: post.avatar, size: 44)
+        AvatarView(initials: post.avatar, size: 44, imageURL: post.avatarURL)
 
         VStack(alignment: .leading, spacing: 2) {
           HStack(spacing: 4) {
@@ -146,18 +136,6 @@ struct PostCard: View {
         }
 
         Spacer(minLength: 4)
-
-        Menu {
-          Button("Not interested", systemImage: "hand.thumbsdown") {}
-          Button("Mute @\(post.handle)", systemImage: "speaker.slash") {}
-          Button("Report", systemImage: "exclamationmark.bubble", role: .destructive) {}
-        } label: {
-          Image(systemName: "ellipsis")
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .frame(width: 32, height: 32)
-        }
-        .accessibilityLabel("More actions for \(post.author)")
       }
 
       Text(post.body)
@@ -165,28 +143,28 @@ struct PostCard: View {
         .lineSpacing(3)
         .fixedSize(horizontal: false, vertical: true)
 
-      if let media = post.media {
-        PostMediaView(kind: media)
+      if let attachment = post.attachments.first {
+        PostAttachmentView(attachment: attachment)
       }
 
       HStack(spacing: 0) {
         PostActionButton(
           symbol: "bubble.left", count: post.replyCount,
           tint: .secondary, isActive: false
-        ) { isShowingReply = true }
+        ) { authenticate { isShowingReply = true } }
 
         PostActionButton(
           symbol: "arrow.2.squarepath", count: post.boostCount,
           tint: .mint, isActive: post.isBoosted
-        ) { withAnimation(.bouncy) { store.toggleBoost(post.id) } }
+        ) { authenticate { Task { await store.toggleBoost(post.id) } } }
 
         PostActionButton(
           symbol: post.isLiked ? "heart.fill" : "heart", count: post.likeCount,
           tint: .pink, isActive: post.isLiked
-        ) { withAnimation(.bouncy) { store.toggleLike(post.id) } }
+        ) { authenticate { Task { await store.toggleLike(post.id) } } }
 
         Button {
-          withAnimation(.snappy) { store.toggleBookmark(post.id) }
+          authenticate { Task { await store.toggleBookmark(post.id) } }
         } label: {
           Image(systemName: post.isBookmarked ? "bookmark.fill" : "bookmark")
             .foregroundStyle(post.isBookmarked ? TweetaColors.lavender : .secondary)
@@ -211,9 +189,19 @@ struct PostCard: View {
     .tweetaGlass(in: RoundedRectangle(cornerRadius: 25, style: .continuous), interactive: true)
     .sheet(isPresented: $isShowingReply) {
       QuickReplyView(post: post)
+        .environment(store)
         .presentationDetents([.height(330)])
         .presentationBackground(.ultraThinMaterial)
     }
+    .sheet(isPresented: $isShowingSignIn) {
+      SignInView().environment(store)
+        .presentationDetents([.medium, .large])
+        .presentationBackground(.ultraThinMaterial)
+    }
+  }
+
+  private func authenticate(_ action: () -> Void) {
+    if store.isSignedIn { action() } else { isShowingSignIn = true }
   }
 }
 
@@ -240,82 +228,57 @@ private struct PostActionButton: View {
   }
 }
 
-private struct PostMediaView: View {
-  let kind: Post.Media
+private struct PostAttachmentView: View {
+  let attachment: Post.Attachment
 
   var body: some View {
-    ZStack(alignment: .bottomLeading) {
-      switch kind {
-      case .aurora:
-        LinearGradient(
-          colors: [.indigo, .purple, .cyan.opacity(0.8), .black],
-          startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        .overlay(alignment: .topTrailing) {
-          Circle().fill(.white.opacity(0.2)).frame(width: 130).blur(radius: 30).offset(
-            x: 20, y: -40)
-        }
-      case .city:
-        LinearGradient(
-          colors: [.indigo.opacity(0.75), .pink.opacity(0.6), .orange.opacity(0.7)],
-          startPoint: .top, endPoint: .bottom
-        )
-        .overlay(alignment: .bottom) {
-          HStack(alignment: .bottom, spacing: 6) {
-            ForEach([0.42, 0.7, 0.54, 0.88, 0.5, 0.64], id: \.self) { scale in
-              RoundedRectangle(cornerRadius: 3)
-                .fill(.black.opacity(0.56))
-                .frame(height: 130 * scale)
+    Group {
+      if attachment.isImage {
+        AsyncImage(url: attachment.url) { phase in
+          switch phase {
+          case .empty:
+            ZStack {
+              Color.secondary.opacity(0.08)
+              ProgressView()
             }
+          case .success(let image):
+            image.resizable().scaledToFill()
+          case .failure:
+            ContentUnavailableView("Image unavailable", systemImage: "photo")
+          @unknown default:
+            EmptyView()
           }
-          .padding(.horizontal, 20)
         }
-      case .ocean:
-        LinearGradient(
-          colors: [.cyan.opacity(0.7), .blue, .indigo], startPoint: .top, endPoint: .bottom
-        )
-        .overlay {
-          ForEach(0..<4) { index in
-            Capsule()
-              .stroke(.white.opacity(0.22), lineWidth: 2)
-              .frame(width: 270, height: 36)
-              .offset(y: CGFloat(index * 30 - 45))
+      } else {
+        Link(destination: attachment.url) {
+          VStack(spacing: 10) {
+            Image(systemName: "play.rectangle.fill").font(.largeTitle)
+            Text("Open attachment").font(.subheadline.bold())
           }
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .background(TweetaColors.violet.opacity(0.12))
         }
       }
-
-      Label(mediaLabel, systemImage: "camera.fill")
-        .font(.caption2.weight(.semibold))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: Capsule())
-        .padding(10)
     }
     .frame(height: 205)
     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.14)))
-    .accessibilityLabel(mediaLabel)
-  }
-
-  private var mediaLabel: String {
-    switch kind {
-    case .aurora: "Aurora lights"
-    case .city: "Melbourne skyline"
-    case .ocean: "Ocean waves"
-    }
   }
 }
 
 private struct QuickReplyView: View {
+  @Environment(AppStore.self) private var store
   @Environment(\.dismiss) private var dismiss
   let post: Post
   @State private var reply = ""
+  @State private var isSending = false
+  @State private var errorMessage: String?
 
   var body: some View {
     NavigationStack {
       VStack(alignment: .leading, spacing: 16) {
         HStack(spacing: 10) {
-          AvatarView(initials: post.avatar, size: 34)
+          AvatarView(initials: post.avatar, size: 34, imageURL: post.avatarURL)
           Text("Replying to **@\(post.handle)**")
             .font(.subheadline)
             .foregroundStyle(.secondary)
@@ -324,6 +287,11 @@ private struct QuickReplyView: View {
           .lineLimit(4...7)
           .padding(14)
           .tweetaGlass(in: RoundedRectangle(cornerRadius: 18), interactive: true)
+        if let errorMessage {
+          Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+            .font(.footnote)
+            .foregroundStyle(.red)
+        }
         Spacer()
       }
       .padding()
@@ -334,10 +302,25 @@ private struct QuickReplyView: View {
           Button("Cancel") { dismiss() }
         }
         ToolbarItem(placement: .confirmationAction) {
-          Button("Reply") { dismiss() }
+          Button("Reply") { sendReply() }
             .fontWeight(.semibold)
-            .disabled(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
         }
+      }
+    }
+  }
+
+  private func sendReply() {
+    isSending = true
+    errorMessage = nil
+    Task {
+      do {
+        try await store.publish(
+          reply.trimmingCharacters(in: .whitespacesAndNewlines), replyTo: post.id)
+        dismiss()
+      } catch {
+        errorMessage = error.localizedDescription
+        isSending = false
       }
     }
   }
